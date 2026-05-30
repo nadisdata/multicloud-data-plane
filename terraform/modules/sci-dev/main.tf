@@ -32,7 +32,7 @@ resource "aws_iam_role" "sci_read" {
       Action    = "sts:AssumeRole"
       # Enforce phishing-resistant MFA on the cross-boundary hop.
       Condition = {
-        Bool        = { "aws:MultiFactorAuthPresent" = "true" }
+        Bool            = { "aws:MultiFactorAuthPresent" = "true" }
         NumericLessThan = { "aws:MultiFactorAuthAge" = "3600" }
       }
     }]
