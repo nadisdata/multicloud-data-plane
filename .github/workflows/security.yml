@@ -1,0 +1,77 @@
+name: security-gate
+
+# Demonstrates the RFI requirement: an automated CI/CD pipeline that enforces
+# security guardrails BEFORE any infrastructure is provisioned, and emits a
+# machine-readable SBOM. The build fails on High/Critical findings.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: terraform fmt + validate
+        working-directory: terraform
+        run: |
+          terraform fmt -check -recursive
+          terraform init -backend=false
+          terraform validate
+
+  iac-security:
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+
+      # Checkov — policy-as-code scan of the Terraform.
+      - name: Checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: terraform
+          framework: terraform
+          soft_fail: false          # FAIL the build on policy violations
+
+      # tfsec — second opinion, static IaC analysis.
+      - name: tfsec
+        uses: aquasecurity/tfsec-action@v1.0.0
+        with:
+          working_directory: terraform
+
+      # Snyk IaC — third scanner; requires SNYK_TOKEN secret to be set.
+      - name: Snyk IaC
+        if: ${{ env.SNYK_TOKEN != '' }}
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        uses: snyk/actions/iac@master
+        with:
+          args: --severity-threshold=high terraform
+
+  sbom:
+    runs-on: ubuntu-latest
+    needs: iac-security
+    steps:
+      - uses: actions/checkout@v4
+
+      # Generate a machine-readable SBOM (CycloneDX) for the repo.
+      - name: Generate SBOM (Syft)
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: sbom.cyclonedx.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.cyclonedx.json
