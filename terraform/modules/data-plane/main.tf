@@ -14,11 +14,23 @@ variable "log_bucket_id" {
   description = "Bucket to receive S3 access logs."
 }
 
+data "aws_caller_identity" "current" {}
+
 # Customer-managed key: explicit, rotated, least-privilege.
 resource "aws_kms_key" "data" {
   description             = "${var.name_prefix} data-plane CMK"
   enable_key_rotation     = true
   deletion_window_in_days = 30
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "EnableRootAccountAdmin"
+      Effect    = "Allow"
+      Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root" }
+      Action    = "kms:*"
+      Resource  = "*"
+    }]
+  })
 }
 
 resource "aws_kms_alias" "data" {
@@ -29,6 +41,10 @@ resource "aws_kms_alias" "data" {
 # Governed object storage for the FISMA-High data plane.
 resource "aws_s3_bucket" "data" {
   bucket = "${var.name_prefix}-data-plane"
+  # checkov:skip=CKV_AWS_144:Cross-region replication is a production/ATO-time decision;
+  # omitted from this single-region reference to keep it deployable as-is.
+  # checkov:skip=CKV2_AWS_62:Event notifications are workflow-specific (set per integration).
+  # checkov:skip=CKV2_AWS_61:Lifecycle/retention is environment-specific; defined per ATO.
 }
 
 resource "aws_s3_bucket_public_access_block" "data" {
