@@ -38,7 +38,7 @@ jobs:
       # Checkov — the authoritative policy-as-code gate. Honors inline
       # `checkov:skip` justifications. Fails the build on any other violation.
       - name: Checkov
-        uses: bridgecrewio/checkov-action@v12
+        uses: bridgecrewio/checkov-action@v12.3103.0
         with:
           directory: terraform
           framework: terraform
@@ -48,16 +48,18 @@ jobs:
       # Reports findings but does not gate the build (Checkov is the gate),
       # so a second tool's heuristics can't override our documented exceptions.
       - name: Trivy IaC
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: terraform
           exit-code: "0"
           severity: HIGH,CRITICAL
 
-      # Snyk IaC — optional third scanner; runs only when SNYK_TOKEN is set.
+      # Snyk IaC — optional third scanner. Disabled by default; to enable, set
+      # repository variable RUN_SNYK=true and add the SNYK_TOKEN secret.
+      # (secrets cannot be referenced in a step-level `if`, so we gate on a var.)
       - name: Snyk IaC
-        if: ${{ secrets.SNYK_TOKEN != '' }}
+        if: ${{ vars.RUN_SNYK == 'true' }}
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         uses: snyk/actions/iac@master
